@@ -7,15 +7,15 @@ namespace SqlConnectionProj
     {
         static void Main(string[] args)
         {
-            //var conString = "Data source=localhost; Initial catalog=AcademySummer; Integrated security=true";
             var conString = "" +
-                "Data source=localhost; " +
+                "Data source=localhost1; " +
                 "Initial catalog=AcademySummer; " +
                 "user id=sa; " +
                 "password=1234";
-            while (true)
+            var working = true;
+            while (working)
             {
-                Console.Write("1. Create client\n2. Create Account\n3. Client list\n4. Transfer from acc to acc\nChoice:");
+                Console.Write("0. Exit\n1. Create client\n2. Create Account\n3. Client list\n4. Transfer from acc to acc\n5. Check balance\nChoice:");
                 int.TryParse(Console.ReadLine(), out var choice);
                 switch (choice)
                 {
@@ -33,22 +33,58 @@ namespace SqlConnectionProj
                         break;
                     case 4:
                         {
-                            Console.Write("From acc");
+                            Console.Write("From account:");
                             var fromAcc = Console.ReadLine();
 
-                            Console.Write("To acc");
+                            Console.Write("To account:");
                             var toAcc = Console.ReadLine();
-
-                            Decimal.TryParse(Console.ReadLine(), out var amount);
+                            Console.Write("Amount:");
+                            decimal.TryParse(Console.ReadLine(), out var amount);
 
                             TransferFromToAcc(fromAcc, toAcc, amount, conString);
                         }
+                        break;
+                    case 5:
+                        {
+                            Console.Write("Account:");
+                            var account = Console.ReadLine();
+                            var balance = GetAccountBalance(conString, account);
+                            Console.WriteLine($"Account balance: {balance}");
+                        }
+                        break;
+                    case 0:
+                        working = false;
                         break;
                     default:
                         Console.WriteLine("Wrong command.");
                         break;
                 }
+                Console.WriteLine("Press any key...");
+                Console.ReadLine();
+                Console.Clear();
             }
+        }
+
+        private static decimal GetAccountBalance(string conString, string account)
+        {
+            var conn = new SqlConnection(conString);
+            conn.Open();
+            var command = conn.CreateCommand();
+            command.CommandText = "select sum( case when t.Type = 'C' then t.Amount * -1 else t.Amount end) from Transactions t left join Accounts a on t.Account_Id = a.Id where a.Number = @fromAcc";
+            command.Parameters.AddWithValue("@fromAcc", account);
+            var reader = command.ExecuteReader();
+            var fromAccBalance = 0m;
+
+            while (reader.Read())
+            {
+                fromAccBalance = !string.IsNullOrEmpty(reader.GetValue(0)?.ToString()) ? reader.GetDecimal(0) : 0;
+            }
+
+            reader.Close();
+            command.Parameters.Clear();
+
+            conn.Close();
+            return fromAccBalance;
         }
 
         private static void TransferFromToAcc(string fromAcc, string toAcc, decimal amount, string conString)
@@ -62,6 +98,11 @@ namespace SqlConnectionProj
             var conn = new SqlConnection(conString);
             conn.Open();
 
+            if (!(conn.State == System.Data.ConnectionState.Open))
+            {
+                return;
+            }
+
             SqlTransaction sqlTransaction = conn.BeginTransaction();
 
             var command = conn.CreateCommand();
@@ -70,18 +111,7 @@ namespace SqlConnectionProj
 
             try
             {
-                command.CommandText = "select sum( case when t.Type = 'C' then t.Amount * -1 else t.Amount end) from Transactions t left join Accounts a on t.Account_Id = a.Id where a.Number = @fromAcc";
-                command.Parameters.AddWithValue("@fromAcc", fromAcc);
-                var reader = command.ExecuteReader();
-                var fromAccBalance = 0m;
-
-                while (reader.Read())
-                {
-                    fromAccBalance = !string.IsNullOrEmpty(reader.GetValue(0)?.ToString()) ? reader.GetDecimal(0) : 0;
-                }
-                
-                reader.Close();
-                command.Parameters.Clear();
+                var fromAccBalance = GetAccountBalance(conString, fromAcc);
 
                 if (fromAccBalance <= 0 || (fromAccBalance - amount) < 0)
                 {
@@ -90,7 +120,7 @@ namespace SqlConnectionProj
 
                 var fromAccId = GetAccountId(fromAcc, conString);
 
-                if(fromAccId == 0)
+                if (fromAccId == 0)
                 {
                     throw new Exception("Account not found");
                 }
@@ -212,7 +242,7 @@ namespace SqlConnectionProj
                 client.FirstName = reader["FirstName"].ToString();
                 client.MiddleName = reader["MiddleName"].ToString();
                 var x = reader["Created_At"]?.ToString();
-                client.CreatedAt = !string.IsNullOrEmpty(reader["Created_At"]?.ToString()) ?  DateTime.Parse(reader["Created_At"].ToString()) : null;
+                client.CreatedAt = !string.IsNullOrEmpty(reader["Created_At"]?.ToString()) ? DateTime.Parse(reader["Created_At"].ToString()) : null;
                 client.UpdatedAt = !string.IsNullOrEmpty(reader["Updated_At"]?.ToString()) ? DateTime.Parse(reader["Updated_At"].ToString()) : null;
                 AddClient(ref clients, client);
             }
